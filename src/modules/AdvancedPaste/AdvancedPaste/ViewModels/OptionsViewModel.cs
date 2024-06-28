@@ -22,7 +22,7 @@ using WinUIEx;
 
 namespace AdvancedPaste.ViewModels
 {
-    public partial class OptionsViewModel : ObservableObject
+    public partial class OptionsViewModel : ObservableObject, IDisposable
     {
         private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         private readonly IUserSettings _userSettings;
@@ -32,6 +32,10 @@ namespace AdvancedPaste.ViewModels
         private AICompletionsHelper aiHelper;
 
         public DataPackageView ClipboardData { get; set; }
+
+        public delegate void OptionsViewModelCompletionUpdated(string newCompletion);
+
+        public event OptionsViewModelCompletionUpdated CompletionUpdated;
 
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(InputTxtBoxPlaceholderText))]
@@ -56,6 +60,8 @@ namespace AdvancedPaste.ViewModels
 
             IsCustomAIEnabled = IsClipboardDataText && aiHelper.IsAIEnabled;
 
+            aiHelper.CompletionUpdated += OnCompletionUpdated;
+
             ApiRequestStatus = (int)HttpStatusCode.OK;
 
             GeneratedResponses = new ObservableCollection<string>();
@@ -67,6 +73,26 @@ namespace AdvancedPaste.ViewModels
 
             ClipboardHistoryEnabled = IsClipboardHistoryEnabled();
             GetClipboardData();
+        }
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                aiHelper.Dispose();
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        protected virtual void OnCompletionUpdated(string newCompletion)
+        {
+            CustomFormatResult = newCompletion;
+            CompletionUpdated?.Invoke(newCompletion);
         }
 
         public void GetClipboardData()
@@ -341,10 +367,9 @@ namespace AdvancedPaste.ViewModels
                 return string.Empty;
             }
 
-            var aiResponse = await Task.Run(() => aiHelper.AIFormatString(inputInstructions, currentClipboardText));
+            var aiResponse = await aiHelper.GetLocalAICompletion(inputInstructions, currentClipboardText);
 
-            string aiOutput = aiResponse.Response;
-            ApiRequestStatus = aiResponse.ApiRequestStatus;
+            string aiOutput = aiResponse;
 
             GeneratedResponses.Add(aiOutput);
             CurrentResponseIndex = GeneratedResponses.Count - 1;

@@ -2,6 +2,7 @@
 // The Microsoft Corporation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System;
 using System.Net;
 using System.Threading.Tasks;
 using AdvancedPaste.Helpers;
@@ -66,11 +67,18 @@ namespace AdvancedPaste.Controls
             _userSettings = App.GetService<IUserSettings>();
 
             ViewModel = App.GetService<OptionsViewModel>();
+            ViewModel.CompletionUpdated += ShowPromptBox;
         }
 
         private void Grid_Loaded(object sender, RoutedEventArgs e)
         {
             InputTxtBox.Focus(FocusState.Programmatic);
+        }
+
+        private void ShowPromptBox(string inputText)
+        {
+            PreviewGrid.Width = InputTxtBox.ActualWidth;
+            PreviewFlyout.ShowAt(InputTxtBox);
         }
 
         [RelayCommand]
@@ -89,6 +97,7 @@ namespace AdvancedPaste.Controls
                 {
                     _dispatcherQueue.TryEnqueue(() =>
                     {
+                        Console.WriteLine("Right here");
                         ViewModel.CustomFormatResult = t.Result;
 
                         if (ViewModel.ApiRequestStatus == (int)HttpStatusCode.OK)
