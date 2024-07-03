@@ -54,7 +54,12 @@ namespace AdvancedPaste.Helpers
             this._openAIKey = LoadOpenAIKey();
 
             _slmRunner = new SLMRunner();
-            _slmRunner.InitializeAsync();
+        }
+
+        public async Task<bool> StartLoadingModel()
+        {
+            await _slmRunner.InitializeAsync();
+            return true;
         }
 
         public void Dispose()

@@ -101,6 +101,40 @@ namespace AdvancedPaste.ViewModels
             IsClipboardDataText = ClipboardData.Contains(StandardDataFormats.Text);
         }
 
+        public async void CheckIfAIIsEnabled()
+        {
+            var openAIKey = AICompletionsHelper.LoadOpenAIKey();
+            var currentKey = aiHelper.GetKey();
+            var modelLoadingFunction = aiHelper.StartLoadingModel();
+            bool keyChanged = openAIKey != currentKey;
+
+            await modelLoadingFunction;
+
+            if (keyChanged)
+            {
+                app.GetMainWindow().StartLoading();
+
+                await Task.Run(() =>
+                {
+                    aiHelper.SetOpenAIKey(openAIKey);
+                }).ContinueWith(
+                    (t) =>
+                    {
+                        _dispatcherQueue.TryEnqueue(() =>
+                        {
+                            app.GetMainWindow().FinishLoading(aiHelper.IsAIEnabled);
+                            OnPropertyChanged(nameof(InputTxtBoxPlaceholderText));
+                            IsCustomAIEnabled = IsClipboardDataText && aiHelper.IsAIEnabled;
+                        });
+                    },
+                    TaskScheduler.Default);
+            }
+            else
+            {
+                IsCustomAIEnabled = IsClipboardDataText && aiHelper.IsAIEnabled;
+            }
+        }
+
         public void OnShow()
         {
             GetClipboardData();
@@ -112,33 +146,7 @@ namespace AdvancedPaste.ViewModels
             }
             else
             {
-                var openAIKey = AICompletionsHelper.LoadOpenAIKey();
-                var currentKey = aiHelper.GetKey();
-                bool keyChanged = openAIKey != currentKey;
-
-                if (keyChanged)
-                {
-                    app.GetMainWindow().StartLoading();
-
-                    Task.Run(() =>
-                    {
-                        aiHelper.SetOpenAIKey(openAIKey);
-                    }).ContinueWith(
-                        (t) =>
-                        {
-                            _dispatcherQueue.TryEnqueue(() =>
-                            {
-                                app.GetMainWindow().FinishLoading(aiHelper.IsAIEnabled);
-                                OnPropertyChanged(nameof(InputTxtBoxPlaceholderText));
-                                IsCustomAIEnabled = IsClipboardDataText && aiHelper.IsAIEnabled;
-                            });
-                        },
-                        TaskScheduler.Default);
-                }
-                else
-                {
-                    IsCustomAIEnabled = IsClipboardDataText && aiHelper.IsAIEnabled;
-                }
+                CheckIfAIIsEnabled();
             }
 
             ClipboardHistoryEnabled = IsClipboardHistoryEnabled();
@@ -368,6 +376,8 @@ namespace AdvancedPaste.ViewModels
             }
 
             var aiResponse = await aiHelper.GetLocalAICompletion(inputInstructions, currentClipboardText);
+
+            aiHelper.Dispose();
 
             string aiOutput = aiResponse;
 

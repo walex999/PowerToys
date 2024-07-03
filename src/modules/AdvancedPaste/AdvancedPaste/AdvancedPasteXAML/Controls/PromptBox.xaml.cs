@@ -92,12 +92,14 @@ namespace AdvancedPaste.Controls
 
             var customFormatTask = ViewModel.GenerateCustomFunction(inputInstructions);
 
+            PreviewPasteBtn.IsEnabled = false;
+
             customFormatTask.ContinueWith(
                 t =>
                 {
                     _dispatcherQueue.TryEnqueue(() =>
                     {
-                        Console.WriteLine("Right here");
+                        PreviewPasteBtn.IsEnabled = true;
                         ViewModel.CustomFormatResult = t.Result;
 
                         if (ViewModel.ApiRequestStatus == (int)HttpStatusCode.OK)
