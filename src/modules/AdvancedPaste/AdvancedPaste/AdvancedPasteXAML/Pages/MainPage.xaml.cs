@@ -13,6 +13,8 @@ using AdvancedPaste.Models;
 using AdvancedPaste.ViewModels;
 using ManagedCommon;
 using Microsoft.PowerToys.Telemetry;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media.Imaging;
@@ -27,6 +29,8 @@ namespace AdvancedPaste.Pages
         private readonly ObservableCollection<ClipboardItem> clipboardHistory;
         private readonly ObservableCollection<PasteFormat> pasteFormats;
         private readonly Microsoft.UI.Dispatching.DispatcherQueue _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+
+        private readonly ObservableCollection<ChatMessageContent> chatHistory;
 
         public OptionsViewModel ViewModel { get; private set; }
 
@@ -44,6 +48,8 @@ namespace AdvancedPaste.Pages
             ViewModel = App.GetService<OptionsViewModel>();
 
             clipboardHistory = new ObservableCollection<ClipboardItem>();
+
+            chatHistory = ViewModel.ObservableChatHistory;
 
             LoadClipboardHistoryEvent(null, null);
             Clipboard.HistoryChanged += LoadClipboardHistoryEvent;

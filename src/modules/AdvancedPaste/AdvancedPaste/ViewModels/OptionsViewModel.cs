@@ -5,16 +5,21 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Globalization;
+using System.Linq;
 using System.Net;
+using System.Threading;
 using System.Threading.Tasks;
 using AdvancedPaste.Helpers;
 using AdvancedPaste.Models;
+using AdvancedPaste.Plugins;
 using AdvancedPaste.Settings;
 using Common.UI;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ManagedCommon;
 using Microsoft.PowerToys.Settings.UI.Library;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.UI.Dispatching;
 using Microsoft.Win32;
 using Windows.ApplicationModel.DataTransfer;
@@ -22,7 +27,7 @@ using WinUIEx;
 
 namespace AdvancedPaste.ViewModels
 {
-    public partial class OptionsViewModel : ObservableObject
+    public partial class OptionsViewModel : ObservableObject, IDisposable
     {
         private readonly DispatcherQueue _dispatcherQueue = DispatcherQueue.GetForCurrentThread();
         private readonly IUserSettings _userSettings;
@@ -45,13 +50,38 @@ namespace AdvancedPaste.ViewModels
         [ObservableProperty]
         private bool _clipboardHistoryEnabled;
 
+        private ChatHistory _chatHistory = new();
+
+        public ObservableCollection<ChatMessageContent> ObservableChatHistory { get; } = new ObservableCollection<ChatMessageContent>();
+
+        private Timer _synchronizationTimer;
+
+        private ClipboardService _clipboardService;
+
+        public ChatHistory ChatHistory
+        {
+            get => _chatHistory;
+            set
+            {
+                if (SetProperty(ref _chatHistory, value))
+                {
+                    ObservableChatHistory.Clear();
+                    foreach (var message in _chatHistory)
+                    {
+                        ObservableChatHistory.Add(message);
+                    }
+                }
+            }
+        }
+
         [ObservableProperty]
         [NotifyPropertyChangedFor(nameof(InputTxtBoxErrorText))]
         private int _apiRequestStatus;
 
         public OptionsViewModel(IUserSettings userSettings)
         {
-            aiHelper = new AICompletionsHelper();
+            _clipboardService = new ClipboardService();
+            aiHelper = new AICompletionsHelper(this.ChatHistory, this._clipboardService);
             _userSettings = userSettings;
 
             IsCustomAIEnabled = IsClipboardDataText && aiHelper.IsAIEnabled;
@@ -67,12 +97,15 @@ namespace AdvancedPaste.ViewModels
 
             ClipboardHistoryEnabled = IsClipboardHistoryEnabled();
             GetClipboardData();
+
+            StartSynchronizationTimer();
         }
 
-        public void GetClipboardData()
+        public async void GetClipboardData()
         {
             ClipboardData = Clipboard.GetContent();
             IsClipboardDataText = ClipboardData.Contains(StandardDataFormats.Text);
+            await _clipboardService.ResetData(ClipboardData);
         }
 
         public void OnShow()
@@ -117,7 +150,43 @@ namespace AdvancedPaste.ViewModels
 
             ClipboardHistoryEnabled = IsClipboardHistoryEnabled();
             GeneratedResponses.Clear();
+            _chatHistory.Clear();
         }
+
+        // === BEGINNING OF DISGUSTING POLLING CODE ===
+        // TODO: Remove this polling logic.
+        private void SynchronizeChatHistoryWithObservable()
+        {
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                try
+                {
+                    ObservableChatHistory.Clear();
+                    foreach (var message in _chatHistory)
+                    {
+                        ObservableChatHistory.Add(message);
+                    }
+                }
+                catch (Exception e)
+                {
+                    Console.WriteLine(e);
+                }
+            });
+        }
+
+        private void StartSynchronizationTimer()
+        {
+            // Call SynchronizeChatHistoryWithObservable every second (1000 milliseconds)
+            _synchronizationTimer = new Timer(_ => SynchronizeChatHistoryWithObservable(), null, 0, 100);
+        }
+
+        public void Dispose()
+        {
+            _synchronizationTimer?.Dispose();
+            GC.SuppressFinalize(this);
+        }
+
+        // === END OF DISGUSTING POLLING CODE ===
 
         // List to store generated responses
         public ObservableCollection<string> GeneratedResponses { get; set; } = new ObservableCollection<string>();
@@ -341,10 +410,12 @@ namespace AdvancedPaste.ViewModels
                 return string.Empty;
             }
 
-            var aiResponse = await Task.Run(() => aiHelper.AIFormatString(inputInstructions, currentClipboardText));
+            var aiResponse = await aiHelper.GetAIAgentCompletion(inputInstructions);
 
-            string aiOutput = aiResponse.Response;
-            ApiRequestStatus = aiResponse.ApiRequestStatus;
+            string aiOutput = aiResponse;
+            ApiRequestStatus = (int)HttpStatusCode.OK;
+
+            _clipboardService.PutDataPackageIntoClipboard();
 
             GeneratedResponses.Add(aiOutput);
             CurrentResponseIndex = GeneratedResponses.Count - 1;
