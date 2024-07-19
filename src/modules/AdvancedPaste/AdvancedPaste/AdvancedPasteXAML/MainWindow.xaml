@@ -8,7 +8,7 @@
     xmlns:pages="using:AdvancedPaste.Pages"
     xmlns:winuiex="using:WinUIEx"
     Width="420"
-    Height="308"
+    Height="700"
     MinWidth="420"
     MinHeight="308"
     Closed="WindowEx_Closed"

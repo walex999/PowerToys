@@ -41,6 +41,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
 
         <controls:PromptBox
@@ -48,6 +49,7 @@
             x:Uid="CustomFormatTextBox"
             Margin="8,4,8,0"
             x:FieldModifier="public"
+            Grid.Row="0"
             TabIndex="0">
             <controls:PromptBox.Footer>
                 <StackPanel Orientation="Horizontal">
@@ -96,6 +98,30 @@
                 </StackPanel>
             </controls:PromptBox.Footer>
         </controls:PromptBox>
+        <ScrollViewer
+            Grid.Row="1">
+        <ListBox ItemsSource="{x:Bind chatHistory, Mode=OneWay}">
+            <ListBox.ItemTemplate>
+                <DataTemplate>
+                    <StackPanel>
+                        <TextBlock Text="Message" FontWeight="Bold" />
+                        <TextBlock Text="{Binding Role}" FontWeight="Bold" />
+                        <TextBlock Text="{Binding Content}" TextWrapping="Wrap" />
+                        <ItemsControl ItemsSource="{Binding ToolCalls}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                        <StackPanel>
+                                            <TextBlock FontSize="8" Text="{Binding Name}" />
+                                            <TextBlock FontSize="8" Text="{Binding Arguments}" />
+                                        </StackPanel>
+                                    </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+        </ScrollViewer>
         <Grid
             Grid.Row="2"
             Background="{ThemeResource LayerOnAcrylicFillColorDefaultBrush}"

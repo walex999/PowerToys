@@ -10,11 +10,19 @@ using System.Net;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Media.Media3D;
+using AdvancedPaste.Plugins;
 using Azure;
 using Azure.AI.OpenAI;
+using Helpers;
 using ManagedCommon;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.PowerToys.Settings.UI.Library;
 using Microsoft.PowerToys.Telemetry;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.OpenAI;
+using Microsoft.SemanticKernel.TextGeneration;
 using Windows.Security.Credentials;
 
 namespace AdvancedPaste.Helpers
@@ -41,7 +49,7 @@ namespace AdvancedPaste.Helpers
 
         private string _openAIKey;
 
-        private string _modelName = "gpt-3.5-turbo-instruct";
+        private string _modelName = "gpt-3.5-turbo-0125";
 
         public bool IsAIEnabled => !string.IsNullOrEmpty(this._openAIKey);
 
@@ -49,11 +57,45 @@ namespace AdvancedPaste.Helpers
 
         private CancellationTokenSource cts;
 
-        public AICompletionsHelper()
-        {
-            this._openAIKey = LoadOpenAIKey();
+        private IKernelBuilder _kernelBuilder;
 
+        private Kernel _kernel;
+
+        private IChatCompletionService _chatCompletionService;
+
+        private OpenAIPromptExecutionSettings _openAIPromptExecutionSettings;
+
+        private ChatHistory _pasteAgentChatHistory;
+
+        private ClipboardService _clipboardService;
+
+        private SLMChatCompletionService _slmChatCompletionService;
+
+        public AICompletionsHelper(ChatHistory inChatHistory, ClipboardService clipboardService)
+        {
+            _pasteAgentChatHistory = inChatHistory;
             _slmRunner = new SLMRunner();
+            _slmChatCompletionService = new SLMChatCompletionService();
+
+            _clipboardService = clipboardService;
+
+            _kernelBuilder = Kernel.CreateBuilder();
+
+            _kernelBuilder.Services.AddKeyedSingleton<IChatCompletionService>("SLMChat", _slmChatCompletionService);
+
+            _kernelBuilder.Services.AddSingleton(_clipboardService);
+            _kernelBuilder.Services.AddSingleton(this);
+
+            _kernelBuilder.Plugins.AddFromType<ClipboardPlugin>();
+
+            // Build the kernel
+            _kernel = _kernelBuilder.Build();
+            _chatCompletionService = _kernel.GetRequiredService<IChatCompletionService>();
+
+            _openAIPromptExecutionSettings = new()
+            {
+                ToolCallBehavior = ToolCallBehavior.AutoInvokeKernelFunctions,
+            };
         }
 
         public async Task<bool> StartLoadingModel()
@@ -159,6 +201,29 @@ Output:
             return fullResult;
         }
 
+        public async Task<string> GetAIAgentCompletion(string inputInstructions)
+        {
+            _pasteAgentChatHistory.Clear();
+
+            _pasteAgentChatHistory.AddSystemMessage("""
+                You are an agent who is tasked with helping users paste their clipboard data. You have functions available to help you with this task.
+                The user will put in a request to format their clipboard data and you will fulfill it. Start always by checking the available clipboard formats.
+                """);
+
+            _pasteAgentChatHistory.AddUserMessage(inputInstructions);
+
+            try
+            {
+                var result = await _chatCompletionService.GetChatMessageContentAsync(_pasteAgentChatHistory, executionSettings: _openAIPromptExecutionSettings, kernel: _kernel);
+                _pasteAgentChatHistory.AddAssistantMessage(result.Content);
+                return result.Content;
+            }
+            catch (Exception e)
+            {
+                return e.Message;
+            }
+        }
+
         private Response<Completions> GetAICompletion(string systemInstructions, string userMessage)
         {
             OpenAIClient azureAIClient = new OpenAIClient(_openAIKey);
@@ -166,7 +231,7 @@ Output:
             var response = azureAIClient.GetCompletions(
                 new CompletionsOptions()
                 {
-                    DeploymentName = _modelName,
+                    DeploymentName = "gpt-3.5-turbo-instruct",
                     Prompts =
                     {
                         systemInstructions + "\n\n" + userMessage,
